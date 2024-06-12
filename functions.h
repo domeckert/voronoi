@@ -154,14 +154,14 @@ double totcounts(int npixbin,int *tpix,double *img){
     return tc;
 }
 
-double totsnr(int npixbin,int *tpix,double *img,double *backimg){
+double totsnr(int npixbin,int *tpix,double *img,double *backimg, double *expo, double skybkg){
     int tc=0;
     double tbkg=0;
     for (int i=0; i<npixbin; i++) {
         tc+=img[tpix[i]];
-        tbkg+=backimg[tpix[i]];
+        tbkg+=backimg[tpix[i]] + skybkg*expo[tpix[i]];
     }
-    double snr=tc/sqrt(tc+tbkg);
+    double snr=(tc-tbkg)/sqrt(tc);
     return snr;
 }
 
@@ -230,15 +230,15 @@ bool uniformitycrit(int pixel,int npixbin,int *tpix,double *img,int mincounts){/
     return isuniform;
 }
 
-bool uniformitycrit_snr(int pixel,int npixbin,int *tpix,double *img,double *backimg,double minsnr){//uniformity criterion
+bool uniformitycrit_snr(int pixel,int npixbin,int *tpix,double *img,double *backimg,double minsnr, double *expo, double skybkg){//uniformity criterion
     bool isuniform;
-    double snrold=totsnr(npixbin,tpix,img,backimg);
+    double snrold=totsnr(npixbin,tpix,img,backimg,expo,skybkg);
     int *tpp=new int[npixbin+1];
     for (int i=0; i<npixbin; i++) {
         tpp[i]=tpix[i];
     }
     tpp[npixbin]=pixel;
-    double snrnew=totsnr(npixbin+1,tpp,img,backimg);
+    double snrnew=totsnr(npixbin+1,tpp,img,backimg,expo,skybkg);
     double devold=(snrold-minsnr)*(snrold-minsnr);
     double devnew=(snrnew-minsnr)*(snrnew-minsnr);
     if (devnew<=devold) {
@@ -361,7 +361,7 @@ double compute_voronoi(long *axes,double *img,int *binning,int nbin,double *scal
     return totdiff;
 }
 
-double compute_voronoi_snr(long *axes,double *img,double *backimg,int *binning,int nbin,double *scale,bool wvt,double *cra,double *cdec,double *cpb){
+double compute_voronoi_snr(long *axes,double *img,double *expo,double *backimg,double skybkg,int *binning,int nbin,double *scale,bool wvt,double *cra,double *cdec,double *cpb){
     double *xnode=new double[nbin];
     double *ynode=new double[nbin];
     int *npixbin=new int[nbin];
@@ -389,7 +389,7 @@ double compute_voronoi_snr(long *axes,double *img,double *backimg,int *binning,i
     for (int i=0; i<nbin; i++) {
         if (npixbin[i]>0) {
             getcentroid(npixbin[i],axes,pix[i],img,xnode[i],ynode[i]);
-            cpb[i]=totsnr(npixbin[i],pix[i],img,backimg);
+            cpb[i]=totsnr(npixbin[i],pix[i],img,backimg,expo,skybkg);
         }
         else {
             xnode[i]=cra[i];
@@ -462,7 +462,7 @@ void compute_sb(int npixbin,int *pix,double pixsize,double *img,double *expo,
 void compute_outimg(int *binning,int nbin,long *axes,double *cra,double *cdec,
                     double pixsize,double *img,double *expo,bool isexp,double *backimg,
                     bool isback,double back,double eback,bool isbacksub,double *outimg,
-                    double *error,long npix,double *scale,double *sb,double *esb,int *npixbin){
+                    double *error,long *numbers,long npix,double *scale,double *sb,double *esb,int *npixbin){
     
     int **pix=new int*[nbin];
     for (int i=0; i<nbin; i++) {
@@ -496,6 +496,7 @@ void compute_outimg(int *binning,int nbin,long *axes,double *cra,double *cdec,
             int tbin=binning[i];
             outimg[i]=sb[tbin];
             error[i]=esb[tbin];
+            numbers[i]=tbin;
         }
     }
     for (int i=0; i<nbin; i++) {

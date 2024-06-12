@@ -106,10 +106,10 @@ void region(char *fnam,double *exposure,long *axes){
 int main(int argc, char **argv){
 do {
 	int status=0;
-	if (argc<4 || argc>8){
+	if (argc<4 || argc>12){
         printf("Tool to create a Voronoi tessellation from a counts image\n");
 		printf("Usage:\n");
-		printf("$ voronoi img=image.fits minc=20 outimg=voronoi.fits [expimg=exp.fits backimg=bkg.fits srcreg=src.reg wvt=Y]\n");
+		printf("$ voronoi img=image.fits minc=20 outimg=voronoi.fits [expimg=exp.fits backimg=bkg.fits srcreg=src.reg wvt=Y snr=5 target='counts' skybkg=1e-3 maxrad=10 cx=250 cy=250]\n");
         printf("img: input image\n");
         printf("minc: number of counts for Voronoi tessellation\n");
         printf("outimg: output image\n");
@@ -117,6 +117,12 @@ do {
         printf("backimg: background map\n");
         printf("srcreg: region file for source filtering\n");
         printf("wvt: use weighted Voronoi tessellation (default), Diehl & Stattle 06; if set to N, use Cappellari & Copin 03\n");
+        printf("target: select whether the target will be number of counts (default) or signal-to-noise\n");
+        printf("snr: target SNR if target='snr' (defaults to 5)\n");
+        printf("skybkg: sky background intensity (in cts/s/arcmin^2) if target='snr'. Assuming zero if this value is not provided.\n");
+        printf("maxrad: maximum radius (in arcmin) for application of the Voronoi tessellation. If maxrad is not provided, the whole image is processed.\n");
+        printf("cx: if maxrad is provided, X coordinate of the center (in image pixels) from which to define the maximum radius\n");
+        printf("cy: if maxrad is provided, Y coordinate of the center (in image pixels) from which to define the maximum radius\n");
 	}
 	else {
         int mincounts;
@@ -133,7 +139,14 @@ do {
         bool isreg=false;
         bool isbacksub=false;
         bool wvt=true;
+        bool target_snr=false;
+        double minsnr=5.;
+        double cx_rad=-1;
+        double cy_rad=-1;
+
         int narg=1;
+        double maxrad=-1;
+        double skybkg=0.;
 		*argv++;
 		char comm[200];
         while (narg<argc) {
@@ -156,7 +169,7 @@ do {
             }
             else if (!strcmp(f1,"outimg")) {
                 strcpy(arg2, f2);
-                snprintf(comm,100,"if [ -e %s ]; then rm %s; fi",arg2,arg2);
+                sprintf(comm,"if [ -e %s ]; then rm %s; fi",arg2,arg2);
                 system(comm);
                 isoutimg=true;
                 printf("Output image is %s\n",arg2);
@@ -185,6 +198,35 @@ do {
                     printf("We will use the Diehl & Stattler technique\n");
                 }
             }
+            else if (!strcmp(f1,"target")) {
+                if (!strcmp(f2,"snr")||!strcmp(f2,"SNR")) {
+                    target_snr=true;
+                    printf("The target will be done on signal-to-noise ratio instead of counts\n");
+                }
+                else {
+                    printf("The target will be counts\n");
+                }
+            }
+            else if (!strcmp(f1,"snr")) {
+                minsnr=atof(f2);
+                printf("We will use a target signal-to-noise ratio of %g\n",minsnr);
+            }
+            else if (!strcmp(f1,"skybkg")) {
+                skybkg=atof(f2);
+                printf("We will subtract a sky background value of %g counts/s/arcmin^2 for the calculation of the SNR\n",skybkg);
+            }
+            else if (!strcmp(f1,"maxrad")) {
+                maxrad=atof(f2);
+                printf("We will use a maximum radius of %g for the extraction of the Voronoi map\n",maxrad);
+            }
+            else if (!strcmp(f1,"cx")) {
+                cx_rad=atof(f2);
+                printf("The provided X center is %g pixels\n",cx_rad);
+            }
+            else if (!strcmp(f1,"cy")) {
+                cy_rad=atof(f2);
+                printf("The provided Y center is %g pixels\n",cy_rad);
+            }
             else {
                 printf("Unknown parameter %s\n",f1);
             }
@@ -197,7 +239,7 @@ do {
             printf("Missing mandatory parameter img\n");
             break;
         }
-        if (isminc==false) {
+        if ((isminc==false)&&(target_snr==false)) {
             printf("Missing mandatory parameter minc\n");
             break;
         }
@@ -244,7 +286,10 @@ do {
 			printf("Error %d\n",status);
 			return status;
 		}
-        
+        double skybkg_pix = skybkg * (pixsize/60. * pixsize/60.); // convert skybkg per arcmin2 to skybkg per pixel
+        printf("pixsize: %g\n",pixsize);
+        printf("skybkg, skybkg_pix: %g, %g\n", skybkg, skybkg_pix);
+
         double *expo,*backimg;
         if (isexp) {
             fitsfile *y;
@@ -295,7 +340,7 @@ do {
         if (isreg) {
             region(srcreg,expo,axes);
         }
-        
+
         long npix=axes[0]*axes[1];
         
         double cx,cy;//image pixels of pixel with largest number of counts
@@ -317,6 +362,30 @@ do {
                 }
             }
         }
+
+        if (maxrad>0){
+            if (cx_rad<0){
+                printf("No provided X center, we will use the pixel with the largest number of counts\n");
+                printf("X center: %g\n",cx);
+                cx_rad=cx;
+            }
+            if (cy_rad<0){
+                printf("No provided Y center, we will use the pixel with the largest number of counts\n");
+                printf("Y center: %g\n",cy);
+                cy_rad=cy;
+            }
+            for (int i=0;i<axes[0];i++){
+                for (int j=0;j<axes[1];j++){
+                    double rad = sqrt((i-cx_rad)*(i-cx_rad) + (j-cy_rad)*(j-cy_rad)) * pixsize / 60.; // arcmin
+                    //printf("rad: %g\n", rad);
+                    if (rad >= maxrad){
+                        expo[j*axes[0]+i]=0.;
+                    }
+                }
+            }
+        }
+
+
         int *binning=new int[npix];//mapping of pixels to bins
         bool *isbinned=new bool[npix];
         long npt=0;
@@ -371,7 +440,14 @@ do {
                 if (cpix==-1) break;
                 bool crit1=topologicalcrit(cpix,npixbin[bin],tarray,axes);
                 bool crit2=morphologicalcrit(cpix,npixbin[bin],tarray,axes);//Estimate the roundness of the possible new bin
-                bool crit3=uniformitycrit(cpix,npixbin[bin],tarray,img,mincounts);
+                bool crit3;
+                if (target_snr){
+                    crit3=uniformitycrit_snr(cpix,npixbin[bin],tarray,img,backimg,minsnr,expo,skybkg_pix);
+                }
+                else {
+                    crit3=uniformitycrit(cpix,npixbin[bin],tarray,img,mincounts);
+                }
+
                 if (!crit1 || !crit2 || !crit3){
                     /*if (!crit1) {
                         printf("Crit 1 failed\n");
@@ -382,8 +458,18 @@ do {
                     if (!crit3) {
                         printf("Crit 3 failed\n");
                     }*/
-                    ncb=totcounts(npixbin[bin],tarray,img);
-                    if (ncb>0.8*mincounts) {//The bin has reached the target number of counts
+                    double mintarget;
+                    double ncb;
+                    if (target_snr){
+                        mintarget = 0.8 * minsnr;
+                        ncb=totsnr(npixbin[bin],tarray,img,backimg,expo,skybkg_pix);
+                    }
+                    else {
+                        mintarget = 0.8 * mincounts;
+                        ncb=totcounts(npixbin[bin],tarray,img);
+                    }
+
+                    if (ncb>mintarget) {//The bin has reached the target number of counts or SNR
                         //printf("Bin %d has reached the target number of counts\n",nbin);
                         for (int i=0; i<npixbin[bin]; i++) {
                             int pix=tarray[i];
@@ -485,8 +571,17 @@ do {
         double totdiff=1e10;
         int maxiter=20;
         int iter=0;
-        while (totdiff>0.2 && iter<maxiter) {//threshold for fixed point
-            totdiff=compute_voronoi(axes,img,binning,nbgood,scale,wvt,cxn,cyn,cpb)/nbgood;
+        double target_diff=0.2;
+        if (target_snr){
+            target_diff=0.1;
+        }
+        while (totdiff>target_diff && iter<maxiter) {//threshold for fixed point
+            if (target_snr){
+                totdiff=compute_voronoi_snr(axes,img,expo,backimg,skybkg_pix,binning,nbgood,scale,wvt,cxn,cyn,cpb);
+            }
+            else {
+                totdiff=compute_voronoi(axes,img,binning,nbgood,scale,wvt,cxn,cyn,cpb)/nbgood;
+            }
             printf("Iteration %d, difference %g\n",iter+1,totdiff);
             iter++;
         }
@@ -501,9 +596,10 @@ do {
         printf("Binning completed, now we compute the surface-brightness map...\n");
         double *outimg=new double[npix];
         double *error=new double[npix];
+        long *numbers=new long[npix];
         int *npb=new int[nbgood];
         compute_outimg(binning,nbgood,axes,cxn,cyn,pixsize,img,expo,isexp,backimg,isback,
-                       back,eback,isbacksub,outimg,error,npix,scale,sb,esb,npb);
+                       skybkg,eback,isbacksub,outimg,error,numbers,npix,scale,sb,esb,npb);
 
         
         FILE *fc=fopen("centroids.txt","w");
@@ -549,6 +645,28 @@ do {
             return status;
         }
         fits_write_pix(x2,TDOUBLE,start,npix,error,&status);
+        if (status!=0) {
+            printf("    Error %d\n",status);
+        }
+        fits_write_key(x2,TSTRING,(char *)"CREATOR",(void *)"proffit 1.1",NULL,&status);
+        fits_write_key(x2,TSTRING,(char *)"CTYPE1",(void *)"RA---TAN",(char *)"LONGPROJ where LONG can be RA, GLON, ELON and PROJ can be CAR, TAN or AIT",&status);
+        fits_write_key(x2,TDOUBLE,(char *)"CRPIX1",&crpix1,(char *)"Pixel at reference point",&status);
+        fits_write_key(x2,TDOUBLE,(char *)"CRVAL1",&crval1,(char *)"LONG at the reference value",&status);
+        fits_write_key(x2,TSTRING,(char *)"CUNIT1",(void *)"deg",(char *)"Physical units of axis 1",&status);
+        fits_write_key(x2,TSTRING,(char *)"CTYPE2",(void *)"DEC--TAN",(char *)"LAT-PROJ where LAT can be DEC, GLAT, ELAT and PROJ can be CAR, TAN or AIT",&status);
+        fits_write_key(x2,TDOUBLE,(char *)"CRPIX2",&crpix2,(char *)"Pixel at reference point",&status);
+        fits_write_key(x2,TDOUBLE,(char *)"CRVAL2",&crval2,(char *)"LAT at the reference value",&status);
+        fits_write_key(x2,TSTRING,(char *)"CUNIT2",(void *)"deg",(char *)"Physical units of axis 2",&status);
+        fits_write_key(x2,TDOUBLE,(char *)"CDELT1",&cdelt1,(char *)"Element (1,1) of coordinate transf. matrix (default 1)",&status);
+        fits_write_key(x2,TDOUBLE,(char *)"CDELT2",&pixsize,(char *)"Element (2,2) of coordinate transf. matrix (default 1)",&status);
+        fits_write_key(x2,TSTRING,(char *)"RADECSYS",(void *)"FK5",(char *)"Stellar reference frame",&status);
+        fits_write_key(x2,TSTRING,(char *)"EQUINOX",(void *)"2000.0",(char *)"Coordinate system equinox",&status);
+        fits_create_img(x2,16,2,axes,&status);
+        if (status!=0) {
+            printf("Error %d\n",status);
+            return status;
+        }
+        fits_write_pix(x2,TLONG,start,npix,numbers,&status);
         if (status!=0) {
             printf("    Error %d\n",status);
         }
