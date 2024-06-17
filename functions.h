@@ -496,7 +496,7 @@ void compute_outimg(int *binning,int nbin,long *axes,double *cra,double *cdec,
             int tbin=binning[i];
             outimg[i]=sb[tbin];
             error[i]=esb[tbin];
-            numbers[i]=tbin;
+            numbers[i]=tbin+1;
         }
     }
     for (int i=0; i<nbin; i++) {
