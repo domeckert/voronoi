@@ -658,7 +658,7 @@ do {
         fits_write_key(x2,TDOUBLE,(char *)"CRVAL2",&crval2,(char *)"LAT at the reference value",&status);
         fits_write_key(x2,TSTRING,(char *)"CUNIT2",(void *)"deg",(char *)"Physical units of axis 2",&status);
         fits_write_key(x2,TDOUBLE,(char *)"CDELT1",&cdelt1,(char *)"Element (1,1) of coordinate transf. matrix (default 1)",&status);
-        fits_write_key(x2,TDOUBLE,(char *)"CDELT2",&pixsize,(char *)"Element (2,2) of coordinate transf. matrix (default 1)",&status);
+        fits_write_key(x2,TDOUBLE,(char *)"CDELT2",&tps,(char *)"Element (2,2) of coordinate transf. matrix (default 1)",&status);
         fits_write_key(x2,TSTRING,(char *)"RADECSYS",(void *)"FK5",(char *)"Stellar reference frame",&status);
         fits_write_key(x2,TSTRING,(char *)"EQUINOX",(void *)"2000.0",(char *)"Coordinate system equinox",&status);
         fits_create_img(x2,16,2,axes,&status);
@@ -680,7 +680,7 @@ do {
         fits_write_key(x2,TDOUBLE,(char *)"CRVAL2",&crval2,(char *)"LAT at the reference value",&status);
         fits_write_key(x2,TSTRING,(char *)"CUNIT2",(void *)"deg",(char *)"Physical units of axis 2",&status);
         fits_write_key(x2,TDOUBLE,(char *)"CDELT1",&cdelt1,(char *)"Element (1,1) of coordinate transf. matrix (default 1)",&status);
-        fits_write_key(x2,TDOUBLE,(char *)"CDELT2",&pixsize,(char *)"Element (2,2) of coordinate transf. matrix (default 1)",&status);
+        fits_write_key(x2,TDOUBLE,(char *)"CDELT2",&tps,(char *)"Element (2,2) of coordinate transf. matrix (default 1)",&status);
         fits_write_key(x2,TSTRING,(char *)"RADECSYS",(void *)"FK5",(char *)"Stellar reference frame",&status);
         fits_write_key(x2,TSTRING,(char *)"EQUINOX",(void *)"2000.0",(char *)"Coordinate system equinox",&status);
 		fits_close_file(x2,&status);
